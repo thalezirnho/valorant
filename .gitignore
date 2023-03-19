@@ -1,0 +1,17 @@
+# All gitignore
+
+# Jupyter Notebooks Extensions
+
+#*.ipynb
+*.ipynb_checkpoints
+
+# Other Extensions
+*.json
+*.csv
+*.xlsx
+*.pdf
+*.eml
+*.html
+*.pdf
+*.pyc
+*.exe
