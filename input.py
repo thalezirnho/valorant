@@ -174,4 +174,4 @@ df_matches.to_gbq(
 
 
 blob = bucket.blob(f'valorant/logs/input_log_{exec_time}.txt')
-blob.upload_from_filename(file_name)
+blob.upload_from_filename(f'input_log_{exec_time}.txt')
