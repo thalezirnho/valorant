@@ -12,7 +12,18 @@ from google.cloud import storage, bigquery
 
 from datetime import datetime
 
+exec_time = datetime.now().strftime('%Y%m%d%H%m%S')
 logging.basicConfig(filename=f'input_log_{exec_time}.txt', level=logging.DEBUG, format='%(asctime)s %(levelname)s: %(message)s')
+
+
+logging.info('Validando existência do diretório local...')
+
+dir_name = "match"
+
+if not os.path.exists(dir_name):
+    os.makedirs(dir_name)
+else:
+    pass
 
 # Auth
 logging.info('Autenticação...')
@@ -160,3 +171,7 @@ df_matches.to_gbq(
     if_exists='append',
     table_schema=schema
 )   
+
+
+blob = bucket.blob(f'valorant/logs/input_log_{exec_time}.txt')
+blob.upload_from_filename(file_name)
