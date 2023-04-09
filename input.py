@@ -12,7 +12,11 @@ from google.cloud import storage, bigquery
 
 from datetime import datetime
 
-exec_time = datetime.now().strftime('%Y%m%d%H%m%S')
+exec_time = datetime.now()
+if time.tzname[0] == 'UTC':
+    exec_time = exec_time - timedelta(hours=3)
+    
+exec_time = exec_time.strftime('%Y%m%d%H%m%S')
 logging.basicConfig(filename=f'input_log_{exec_time}.txt', level=logging.DEBUG, format='%(asctime)s %(levelname)s: %(message)s')
 
 
