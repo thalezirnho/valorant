@@ -6,13 +6,16 @@ import hashlib
 import requests
 import pandas as pd
 import pandas_gbq
+import logging
 from datetime import timedelta
 from google.cloud import storage, bigquery
 
 from datetime import datetime
 
+logging.basicConfig(filename=f'input_log_{exec_time}.txt', level=logging.DEBUG, format='%(asctime)s %(levelname)s: %(message)s')
 
 # Auth
+logging.info('Autenticação...')
 path = 'credentials/service_account.json'
 client = storage.Client.from_service_account_json(path)
 
@@ -23,7 +26,10 @@ bucket = client.bucket(bucket_name)
 client_gbq = bigquery.Client.from_service_account_json(path)
 os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = os.path.join(path)
 
+logging.info('Fim da autenticação...')
+
 # Get all stored matchs
+logging.info('Recuperando todos os matchids do bucket...')
 folder_name = "match"
 
 folder = bucket.blob(folder_name)
@@ -34,6 +40,7 @@ for blob in bucket.list_blobs():
     stored_matchs.append(blob.name.replace('match/', '').replace('.json', ''))
     
 # Declare execution time
+logging.info('Declarando timing de execução...')
 date_time = datetime.now()
                     
 if time.tzname[0] == 'UTC':
@@ -49,6 +56,7 @@ date_time = date_time.strftime('%Y%m%d_%H%m%S')
 
 
 # Target Users
+logging.info('Listando target users...')
 users = {
     "viikset": "BR1",
     "TADALA": "TADAL",
@@ -68,6 +76,7 @@ puuids = {
 # Layer Input
 session_matchs = []
 
+logging.info('Iterando por user...')
 for name, tag in users.items():
     
     # Match History
@@ -120,6 +129,7 @@ for name, tag in users.items():
 
                 
 # Get all matches stored after run
+logging.info('Upload da última atualização do bucket...')
 
 folder = bucket.blob(folder_name)
 
@@ -142,6 +152,7 @@ schema = [
     {'name': 'matchid', 'type': 'STRING'}
 ]
 
+logging.info('Ingerindo dados no bq...')
 
 df_matches.to_gbq(
     f'logs_valorant.match_in_storage',
