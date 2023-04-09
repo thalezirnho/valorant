@@ -1,11 +1,45 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+# In[1]:
+
+
+import os
 import json
 import uuid
-import inspect
-
+import time
+import hashlib
+import logging
+import requests
+import numpy as np
 import pandas as pd
+import pandas_gbq
+import inspect
+from datetime import timedelta, datetime
 from google.cloud import storage, bigquery
-#pd.set_option('display.max_columns', 500)
 
+from datetime import datetime
+
+import warnings
+warnings.filterwarnings("ignore")
+
+
+# In[2]:
+
+
+exec_time = datetime.now().strftime('%Y%m%d%H%m%S')
+
+
+# In[3]:
+
+
+logging.basicConfig(filename=f'tabular_logs_{exec_time}.txt', level=logging.DEBUG, format='%(asctime)s %(levelname)s: %(message)s')
+
+
+# In[4]:
+
+
+logging.info('Definindo função build_schema')
 def build_schema(df):    
 
     temp_schema = pd.DataFrame(df.dtypes, columns=['dtype']).reset_index()
@@ -13,59 +47,138 @@ def build_schema(df):
     schema_list = []
 
     for i, row in temp_schema.iterrows():
-        if row['dtype'] == 'int64':
+        if str(row['dtype']).upper() == 'INT64':
             dtype = 'INTEGER'
-        elif row['dtype'] == 'float64':
+        elif str(row['dtype']).upper() == 'FLOAT64':
             dtype = 'FLOAT'
-        elif row['dtype'] == 'object':
+        elif str(row['dtype']).upper() == 'OBJECT':
             dtype = 'STRING'
-        elif row['dtype'] == 'bool':
+        elif str(row['dtype']).upper() == 'BOOL':
             dtype = 'BOOLEAN'
 
-        schema_list.append({'name': row['index'], 'type': f'{dtype}'})
+        schema_list.append({'name': row['index'], 'type': dtype})
 
     return schema_list
 
-
-
+logging.info('Definindo função retrieve_name')
 def retrieve_name(var):
     callers_local_vars = inspect.currentframe().f_back.f_locals.items()
     return [var_name for var_name, var_val in callers_local_vars if var_val is var][0]
 
+
+logging.info('Definindo função reinforce_col_dtype')
+def reinforce_col_dtype(df, my_dict):
+    
+    #df = df.fillna(value=None)
+    
+    df_name = [var for var in globals() if globals()[var] is df][0]
+    
+    if df_name in my_dict:
+        
+        metadata_schema = my_dict[df_name]
+        
+        for dtype in metadata_schema.keys():
+
+            cols = metadata_schema[dtype]
+
+            if dtype == 'int':
+                dtype = 'Int64'
+            elif dtype == 'float':
+                dtype = 'Float64'
+            elif dtype == 'bool':
+                dtype = bool
+            else:
+                dtype = str
+
+            for col in cols:
+                df[col] = df[col].astype(dtype, errors='ignore')
+    else:
+        pass
+    
+    df.replace('nan', None, inplace=True)
+
+    return df
+
+
+# In[44]:
+
+
+logging.info('Autenticando no Storage')
 path = 'credentials/service_account.json'
 client = storage.Client.from_service_account_json(path)
 
-bucket_name = "valorant_data"
 
+bucket_name = "valorant_data"
+logging.info('Definindo o Bucket')
 bucket = client.bucket(bucket_name)
 
+
+logging.info('Autenticando no Bigquery')
 client_gbq = bigquery.Client.from_service_account_json(path)
 os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = os.path.join(path)
 
+
 # Get all stored matchs
+logging.info('Recuperando todos os jogos direto no bucket')
 folder_name = "match"
 
 folder = bucket.blob(folder_name)
 
 matches = []
 
-for blob in bucket.list_blobs():
+logging.info('Criando a lista de jogos')
+for blob in bucket.list_blobs(prefix=folder_name):
     matches.append(blob.name.replace('match/', '').replace('.json', ''))
 
-#matchid = '0d9063f2-4b7f-4737-8244-4c5e32924dfa'
 
-#matches = [matchid]
+# In[46]:
 
+
+logging.info('Lendo dados do bigquery para identificar quais matchid já existem na camada tabular')
+matches_in_bq = []
+query_job = client_gbq.query("SELECT DISTINCT matchid FROM `thales-1615931464192.tabular_valorant_match.metadata`")
+results = query_job.result()
+
+for row in results:
+    matches_in_bq.append(row[0])
+
+# Only new match
+matches = [m for m in matches if m not in matches_in_bq]
+
+
+# In[ ]:
+
+
+# Reading metadata
+logging.info('Lendo os metadados das colunas de todos os dataframes')
+with open('json_metadata.json') as f:
+    data = json.load(f)
+
+
+# In[ ]:
+
+
+logging.info('Início da iteração entre os jogos')
 for matchid in matches:
 
-    with open(f'{matchid}.json', 'r') as f:
-    match = json.load(f)
+    print(matchid)
+    logging.info(f'Recuperando o arquivo do {matchid} formato json')
+    blob = bucket.blob(f"match/{matchid}.json")
+    #blob.download_to_filename(f'/home/thalesfollador/valorant/match/{matchid}.json')
+    blob.download_to_filename(f'match/{matchid}.json')
+    print('Download concluido')
+    logging.info('Download concluído')
+    
+    logging.info(f'Lendo o {matchid}.json da pasta local match')
+    with open(f'match/{matchid}.json', 'r') as f:
+        match = json.load(f)
 
     #metadata = match.pop('metadata')
     #players = match.pop('players')
     #teams = match.pop('teams')
     #rounds = match.pop('rounds')
     #kills = match.pop('kills')
+    logging.info(f'Criando os subarquivos baseado nas chaves')
     metadata = match['metadata']
     players = match['players']
     teams = match['teams']
@@ -96,50 +209,59 @@ for matchid in matches:
     df_player_stats = pd.DataFrame()
 
 
+    logging.info(f'Iterando a seção de Players')
     for player in all_players:
 
         puuid = player['puuid']
 
         for key in json_players_keys:
+            logging.info(f'Tranformando subseções em variáveis')
 
             exec(f"player_{key} = player.pop('{key}')")
             #exec(f"player_{key} = player['{key}']")
             
-
+        logging.info(f'Criando o df_player')
         temp_player = pd.json_normalize(player)
         temp_player['matchid'] = matchid
         df_player = pd.concat([df_player, temp_player])
 
+        logging.info(f'Criando o df_player_ability_casts')
         temp_player_ability_casts = pd.json_normalize(player_ability_casts)
         temp_player_ability_casts['matchid'] = matchid
         temp_player_ability_casts['puuid'] = puuid
         df_player_ability_casts = pd.concat([df_player_ability_casts, temp_player_ability_casts])
 
+        logging.info(f'Criando o df_player_assets')
         temp_player_assets = pd.json_normalize(player_assets, sep='_')
         temp_player_assets['matchid'] = matchid
         temp_player_assets['puuid'] = puuid
         df_player_assets = pd.concat([df_player_assets, temp_player_assets])
 
+        logging.info(f'Criando o df_player_behavior')
         temp_player_behavior = pd.json_normalize(player_behavior, sep='_')
         temp_player_behavior['matchid'] = matchid
         temp_player_behavior['puuid'] = puuid
         df_player_behavior = pd.concat([df_player_behavior, temp_player_behavior])
 
+        logging.info(f'Criando o df_player_economy')
         temp_player_economy = pd.json_normalize(player_economy, sep='_')
         temp_player_economy['matchid'] = matchid
         temp_player_economy['puuid'] = puuid
         df_player_economy = pd.concat([df_player_economy, temp_player_economy])
 
+        logging.info(f'Criando o df_player_platform')
         temp_player_platform = pd.json_normalize(player_platform, sep='_')
         temp_player_platform['matchid'] = matchid
         temp_player_platform['puuid'] = puuid
         df_player_platform = pd.concat([df_player_platform, temp_player_platform])
 
+        logging.info(f'Criando o df_player_session_playtime')
         temp_player_session_playtime = pd.json_normalize(player_session_playtime, sep='_')
         temp_player_session_playtime['matchid'] = matchid
         temp_player_session_playtime['puuid'] = puuid
         df_player_session_playtime = pd.concat([df_player_session_playtime, temp_player_session_playtime])
 
+        logging.info(f'Criando o ')
         temp_player_stats = pd.json_normalize(player_stats, sep='_')
         temp_player_stats['matchid'] = matchid
         temp_player_stats['puuid'] = puuid
@@ -148,13 +270,17 @@ for matchid in matches:
     df_player.reset_index(inplace=True, drop=True)
     df_player_ability_casts.reset_index(inplace=True, drop=True)
     df_player_assets.reset_index(inplace=True, drop=True)
+    
     df_player_behavior.reset_index(inplace=True, drop=True)
+    df_player_behavior.iloc[:,:4] = df_player_behavior.iloc[:,:4].astype(int)
+    
     df_player_economy.reset_index(inplace=True, drop=True)
     df_player_platform.reset_index(inplace=True, drop=True)
     df_player_session_playtime.reset_index(inplace=True, drop=True)
     df_player_stats.reset_index(inplace=True, drop=True)
 
     ## Teams
+    logging.info(f'Criando o df_teams')
     df_teams = pd.json_normalize(teams, sep='_')
     df_teams['matchid'] = matchid
 
@@ -169,23 +295,28 @@ for matchid in matches:
     
     df_round = pd.DataFrame()
 
+    logging.info(f'Iterando os rounds')
     for rnd in rounds:
 
         for key in json_round_keys:
+            logging.info(f'Criando subvariáveis dos rounds')
             exec(f"round_{key} = rnd.pop('{key}')")
             #exec(f"round_{key} = rnd['{key}']")
             
-
+        logging.info(f'Criando Round ID')
         round_id = str(uuid.uuid5(uuid.NAMESPACE_OID, matchid + str(round_number)))
 
         # Round
+        logging.info(f'Criando o df_round')
         temp_round = pd.DataFrame([rnd])
         temp_round['round_id'] = round_id
+        temp_round['round'] = round_number
 
         df_round = pd.concat([df_round, temp_round])
 
+        
         # Plant Events
-
+        logging.info(f'Criando o df_round_plant_events')
         player_locations_on_plant = round_plant_events.pop('player_locations_on_plant')
         #player_locations_on_plant = round_plant_events['player_locations_on_plant']
 
@@ -196,6 +327,7 @@ for matchid in matches:
         df_round_plant_events = pd.concat([df_round_plant_events, temp_round_plant_events])
 
         if player_locations_on_plant is not None:
+            logging.info(f'Criando o df_player_locations_on_plant')
 
             temp_player_locations_on_plant = pd.json_normalize(player_locations_on_plant, sep='_')
 
@@ -204,7 +336,7 @@ for matchid in matches:
             df_player_locations_on_plant = pd.concat([df_player_locations_on_plant, temp_player_locations_on_plant])
 
         # Defuse Events
-
+        logging.info(f'Criando o df_round_defuse_events')
         player_locations_on_defuse = round_defuse_events.pop('player_locations_on_defuse')
         #player_locations_on_defuse = round_defuse_events['player_locations_on_defuse']
 
@@ -216,6 +348,7 @@ for matchid in matches:
 
 
         if player_locations_on_defuse is not None:
+            logging.info(f'Criando o df_player_locations_on_defuse')
 
             temp_player_locations_on_defuse = pd.json_normalize(player_locations_on_defuse, sep='_')
 
@@ -225,13 +358,20 @@ for matchid in matches:
 
 
         round_number += 1
-
+        
+    df_round_plant_events['plant_time_in_round'].replace({None: np.nan}, inplace=True)
+    df_round_plant_events.drop(['plant_location', 'planted_by'], axis=1, inplace=True)
+    
+    df_round_defuse_events['defuse_time_in_round'].replace({None: np.nan}, inplace=True)
+    df_round_defuse_events.drop(['defuse_location', 'defused_by'], axis=1, inplace=True)
+    
     ### Kills
 
     df_kills = pd.DataFrame()
     df_player_locations_on_kill = pd.DataFrame()
     df_assistants = pd.DataFrame()
 
+    logging.info(f'Iterando os eventos de kills')
     for kill in kills:
 
         player_locations_on_kill = kill.pop('player_locations_on_kill')
@@ -267,6 +407,27 @@ for matchid in matches:
     df_player_locations_on_kill.reset_index(inplace=True, drop=True)
     df_assistants.reset_index(inplace=True, drop=True)
     
+    logging.info(f'Aplicando função de metadata')
+    # Adjusting datatype
+    df_metadata = reinforce_col_dtype(df_metadata, data)
+    df_player = reinforce_col_dtype(df_player, data)
+    df_player_ability_casts = reinforce_col_dtype(df_player_ability_casts, data)
+    df_player_assets = reinforce_col_dtype(df_player_assets, data)
+    df_player_behavior = reinforce_col_dtype(df_player_behavior, data)
+    df_player_economy = reinforce_col_dtype(df_player_economy, data)
+    df_player_platform = reinforce_col_dtype(df_player_platform, data)
+    df_player_session_playtime = reinforce_col_dtype(df_player_session_playtime, data)
+    df_player_stats = reinforce_col_dtype(df_player_stats, data)
+    df_round_plant_events = reinforce_col_dtype(df_round_plant_events, data)
+    df_player_locations_on_plant = reinforce_col_dtype(df_player_locations_on_plant, data)
+    df_round_defuse_events = reinforce_col_dtype(df_round_defuse_events, data)
+    df_player_locations_on_defuse = reinforce_col_dtype(df_player_locations_on_defuse, data)
+    df_teams = reinforce_col_dtype(df_teams, data)
+    df_round = reinforce_col_dtype(df_round, data)
+    df_kills = reinforce_col_dtype(df_kills, data)
+    df_player_locations_on_kill = reinforce_col_dtype(df_player_locations_on_kill, data)
+    df_assistants = reinforce_col_dtype(df_assistants, data)
+   
     dfs = [
         df_metadata,
         df_player,
@@ -288,12 +449,28 @@ for matchid in matches:
         df_assistants
     ]
     
-    
+    logging.info(f'Iniciando a ingestão no BQ')
+    print('Starting ingestion...')
     for df in dfs:
+        
+        table_name = retrieve_name(df)
+        logging.info(f'Ingerindo o {table_name}')
+        print(f'Table: {table_name}')
+        table_name = table_name.replace('df_', '')
+      
         df.to_gbq(
-            f'tabular_valorant_match.{retrieve_name(df).replace('df_', '')}',
-            'thales-1615931464192',
-            if_exists='append',
-            table_schema=build_schema(df)
+          f'tabular_valorant_match.{table_name}',
+          'thales-1615931464192',
+          if_exists='append',
+          table_schema=build_schema(df)
         ) 
-    
+      
+        print('Done \n')
+
+
+# In[ ]:
+
+
+blob = bucket.blob(f'/logs/tabular_logs_{exec_time}.txt')
+blob.upload_from_filename(f'tabular_logs_{exec_time}.txt')
+
