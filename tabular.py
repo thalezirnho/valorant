@@ -146,8 +146,12 @@ for row in results:
 matches = [m for m in matches if m not in matches_in_bq]
 
 
-# In[ ]:
+# In[54]:
 
+
+if not os.path.exists("json_metadata.json"):
+    blob = bucket.blob(f"utils/json_metadata.json")
+    blob.download_to_filename(f'json_metadata.json')
 
 # Reading metadata
 logging.info('Lendo os metadados das colunas de todos os dataframes')
