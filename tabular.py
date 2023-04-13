@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[1]:
+# In[ ]:
 
 
 import os
@@ -24,19 +24,25 @@ import warnings
 warnings.filterwarnings("ignore")
 
 
-# In[2]:
+# In[ ]:
+
+
+pd.set_option('display.max_columns', 100)
+
+
+# In[ ]:
 
 
 exec_time = datetime.now().strftime('%Y%m%d%H%m%S')
 
 
-# In[3]:
+# In[ ]:
 
 
 logging.basicConfig(filename=f'tabular_logs_{exec_time}.txt', level=logging.DEBUG, format='%(asctime)s %(levelname)s: %(message)s')
 
 
-# In[4]:
+# In[ ]:
 
 
 logging.info('Definindo função build_schema')
@@ -100,7 +106,7 @@ def reinforce_col_dtype(df, my_dict):
     return df
 
 
-# In[44]:
+# In[ ]:
 
 
 logging.info('Autenticando no Storage')
@@ -131,7 +137,7 @@ for blob in bucket.list_blobs(prefix=folder_name):
     matches.append(blob.name.replace('match/', '').replace('.json', ''))
 
 
-# In[46]:
+# In[ ]:
 
 
 logging.info('Lendo dados do bigquery para identificar quais matchid já existem na camada tabular')
@@ -146,7 +152,7 @@ for row in results:
 matches = [m for m in matches if m not in matches_in_bq]
 
 
-# In[54]:
+# In[ ]:
 
 
 if not os.path.exists("json_metadata.json"):
@@ -162,8 +168,19 @@ with open('json_metadata.json') as f:
 # In[ ]:
 
 
+matches
+
+
+# In[ ]:
+
+
+count = 1
 logging.info('Início da iteração entre os jogos')
+
+print(f"{len(matches)} will be ingest...\n")
+
 for matchid in matches:
+    print(f'_____________\nStarting map number {count}...')
 
     print(matchid)
     logging.info(f'Recuperando o arquivo do {matchid} formato json')
@@ -296,6 +313,8 @@ for matchid in matches:
     df_player_locations_on_plant = pd.DataFrame()
     df_round_defuse_events = pd.DataFrame()
     df_player_locations_on_defuse = pd.DataFrame()
+    df_round_player_stats = pd.DataFrame()
+    df_round_player_damage_events = pd.DataFrame()
     
     df_round = pd.DataFrame()
 
@@ -313,6 +332,7 @@ for matchid in matches:
         # Round
         logging.info(f'Criando o df_round')
         temp_round = pd.DataFrame([rnd])
+        temp_round['matchid'] = matchid
         temp_round['round_id'] = round_id
         temp_round['round'] = round_number
 
@@ -326,7 +346,9 @@ for matchid in matches:
 
         temp_round_plant_events = pd.json_normalize(round_plant_events, sep='_')
 
+        temp_round_plant_events['matchid'] = matchid
         temp_round_plant_events['round_id'] = round_id
+        temp_round_plant_events['round'] = round_number
 
         df_round_plant_events = pd.concat([df_round_plant_events, temp_round_plant_events])
 
@@ -335,7 +357,9 @@ for matchid in matches:
 
             temp_player_locations_on_plant = pd.json_normalize(player_locations_on_plant, sep='_')
 
+            temp_player_locations_on_plant['matchid'] = matchid
             temp_player_locations_on_plant['round_id'] = round_id
+            temp_player_locations_on_plant['round'] = round_number
 
             df_player_locations_on_plant = pd.concat([df_player_locations_on_plant, temp_player_locations_on_plant])
 
@@ -346,7 +370,9 @@ for matchid in matches:
 
         temp_round_defuse_events = pd.json_normalize(round_defuse_events, sep='_')
 
+        temp_round_defuse_events['matchid'] = matchid
         temp_round_defuse_events['round_id'] = round_id
+        temp_round_defuse_events['round'] = round_number
 
         df_round_defuse_events = pd.concat([df_round_defuse_events, temp_round_defuse_events])
 
@@ -356,11 +382,39 @@ for matchid in matches:
 
             temp_player_locations_on_defuse = pd.json_normalize(player_locations_on_defuse, sep='_')
 
+            temp_player_locations_on_defuse['matchid'] = matchid
             temp_player_locations_on_defuse['round_id'] = round_id
+            temp_player_locations_on_defuse['round'] = round_number
 
             df_player_locations_on_defuse = pd.concat([df_player_locations_on_defuse, temp_player_locations_on_defuse])
+        
+        
+        # Create Round Player Stats
+        logging.info(f'Criando o temp_round_player_stats')
+        temp_round_player_stats = pd.json_normalize(round_player_stats, sep='_')
+        temp_round_player_stats['matchid'] = matchid
+        temp_round_player_stats['round_id'] = round_id
+        temp_round_player_stats['round'] = round_number
+        
+        df_round_player_stats = pd.concat([df_round_player_stats, temp_round_player_stats])
+        
+        for element in round_player_stats:
+    
+            player_puuid = element['player_puuid']
+            damage_events = element['damage_events']
 
+            if len(damage_events) >= 1:
+                logging.info(f'Criando o df_round_player_damage_events')
+                temp_round_player_damage_events = pd.DataFrame(damage_events)
+                temp_round_player_damage_events['damager_puuid'] = player_puuid
+                temp_round_player_damage_events['matchid'] = matchid
+                temp_round_player_damage_events['round_id'] = round_id
+                temp_round_player_damage_events['round'] = round_number
 
+                df_round_player_damage_events = pd.concat([df_round_player_damage_events, temp_round_player_damage_events])
+
+        
+        
         round_number += 1
         
     df_round_plant_events['plant_time_in_round'].replace({None: np.nan}, inplace=True)
@@ -368,6 +422,16 @@ for matchid in matches:
     
     df_round_defuse_events['defuse_time_in_round'].replace({None: np.nan}, inplace=True)
     df_round_defuse_events.drop(['defuse_location', 'defused_by'], axis=1, inplace=True)
+    
+    df_round_player_stats['ability_casts_c_casts'].replace({None: np.nan}, inplace=True)
+    df_round_player_stats['ability_casts_e_cast'].replace({None: np.nan}, inplace=True)
+    df_round_player_stats['ability_casts_q_casts'].replace({None: np.nan}, inplace=True)
+    df_round_player_stats['ability_casts_x_cast'].replace({None: np.nan}, inplace=True)
+    df_round_player_stats.drop(['damage_events', 'kill_events'], axis=1, inplace=True)
+    df_round_player_stats.reset_index(inplace=True, drop=True)
+    
+    df_round_player_damage_events.reset_index(inplace=True, drop=True)
+    
     
     ### Kills
 
@@ -431,6 +495,8 @@ for matchid in matches:
     df_kills = reinforce_col_dtype(df_kills, data)
     df_player_locations_on_kill = reinforce_col_dtype(df_player_locations_on_kill, data)
     df_assistants = reinforce_col_dtype(df_assistants, data)
+    df_round_player_stats = reinforce_col_dtype(df_round_player_stats, data)
+    df_round_player_damage_events = reinforce_col_dtype(df_round_player_damage_events, data)
    
     dfs = [
         df_metadata,
@@ -450,8 +516,11 @@ for matchid in matches:
         df_round,
         df_kills,
         df_player_locations_on_kill,
-        df_assistants
+        df_assistants,
+        df_round_player_stats,
+        df_round_player_damage_events
     ]
+    
     
     logging.info(f'Iniciando a ingestão no BQ')
     print('Starting ingestion...')
@@ -470,11 +539,17 @@ for matchid in matches:
         ) 
       
         print('Done \n')
+    count += 1
 
 
 # In[ ]:
 
 
-blob = bucket.blob(f'/logs/tabular_logs_{exec_time}.txt')
-blob.upload_from_filename(f'tabular_logs_{exec_time}.txt')
+
+
+
+# In[ ]:
+
+
+
 

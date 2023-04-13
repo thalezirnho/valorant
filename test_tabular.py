@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[4]:
+# In[ ]:
 
 
 import os
@@ -24,25 +24,25 @@ import warnings
 warnings.filterwarnings("ignore")
 
 
-# In[5]:
+# In[ ]:
 
 
 pd.set_option('display.max_columns', 100)
 
 
-# In[6]:
+# In[ ]:
 
 
 exec_time = datetime.now().strftime('%Y%m%d%H%m%S')
 
 
-# In[7]:
+# In[ ]:
 
 
 logging.basicConfig(filename=f'tabular_logs_{exec_time}.txt', level=logging.DEBUG, format='%(asctime)s %(levelname)s: %(message)s')
 
 
-# In[8]:
+# In[ ]:
 
 
 logging.info('Definindo função build_schema')
@@ -106,7 +106,7 @@ def reinforce_col_dtype(df, my_dict):
     return df
 
 
-# In[9]:
+# In[ ]:
 
 
 logging.info('Autenticando no Storage')
@@ -137,7 +137,7 @@ for blob in bucket.list_blobs(prefix=folder_name):
     matches.append(blob.name.replace('match/', '').replace('.json', ''))
 
 
-# In[10]:
+# In[ ]:
 
 
 logging.info('Lendo dados do bigquery para identificar quais matchid já existem na camada tabular')
@@ -150,12 +150,6 @@ for row in results:
 
 # Only new match
 matches = [m for m in matches if m not in matches_in_bq]
-
-
-# In[12]:
-
-
-matches = [matches_in_bq[0]]
 
 
 # In[ ]:
