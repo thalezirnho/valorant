@@ -179,6 +179,8 @@ logging.info('Início da iteração entre os jogos')
 
 print(f"{len(matches)} will be ingest...\n")
 
+matches = [matches_in_bq[0]]
+
 for matchid in matches:
     print(f'_____________\nStarting map number {count}...')
 
@@ -532,7 +534,7 @@ for matchid in matches:
         table_name = table_name.replace('df_', '')
       
         df.to_gbq(
-          f'tabular_valorant_match.{table_name}',
+          f'development.{table_name}',
           'thales-1615931464192',
           if_exists='append',
           table_schema=build_schema(df)
