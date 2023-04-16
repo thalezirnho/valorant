@@ -29,7 +29,8 @@ def valorant_layer_input() -> list:
         
     # Starting logs
     exec_time = exec_time.strftime('%Y%m%d%H%m%S')
-    logging.basicConfig(filename=f'input_log_{exec_time}.txt', level=logging.DEBUG, format='%(asctime)s %(levelname)s: %(message)s')
+    
+    logging.basicConfig(filename=f'input_log.txt', level=logging.DEBUG, format='%(asctime)s %(levelname)s: %(message)s')
 
 
     # Diretory validations
@@ -181,7 +182,12 @@ def valorant_layer_input() -> list:
 
     # Save execution Log in bucket
     blob = bucket.blob(f'/logs/input_log_{exec_time}.txt')
-    blob.upload_from_filename(f'input_log_{exec_time}.txt')
+    blob.upload_from_filename(f'input_log.txt')
      
+    # Deleting all files .txt logs
+    for file_to_delete in [file for file in os.listdir() if file.endswith('.txt') and 'log_' in file]:
+        os.remove(file_to_delete)
+    
+    
     # Return all new matches for tab
     return session_matchs
