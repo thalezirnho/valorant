@@ -32,7 +32,6 @@ def valorant_layer_input() -> list:
     
     logging.basicConfig(filename=f'input_log.txt', level=logging.DEBUG, format='%(asctime)s %(levelname)s: %(message)s')
 
-
     # Diretory validations
     logging.info('Validating local directory existence...')
     # Folder to store Matchs
@@ -181,13 +180,17 @@ def valorant_layer_input() -> list:
     )   
 
     # Save execution Log in bucket
-    blob = bucket.blob(f'/logs/input_log_{exec_time}.txt')
-    blob.upload_from_filename(f'input_log.txt')
-     
-    # Deleting all files .txt logs
-    for file_to_delete in [file for file in os.listdir() if file.endswith('.txt') and 'log_' in file]:
-        os.remove(file_to_delete)
+    try:
+        blob = bucket.blob(f'/logs/input_log_{exec_time}.txt')
+        blob.upload_from_filename(f'input_log_{exec_time}.txt')
+        
+    except:
+        print('Unable to upload logs')
     
+    # Deleting all files .txt logs
+    for file_to_delete in [file for file in os.listdir() if file.endswith('.txt') and '_log' in file]:
+        print(f'Deleting {file_to_delete}')
+        os.remove(file_to_delete)
     
     # Return all new matches for tab
     return session_matchs
