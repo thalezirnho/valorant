@@ -151,6 +151,10 @@ for row in results:
 # Only new match
 matches = [m for m in matches if m not in matches_in_bq]
 
+# Matches to ignore (Erros receiving Data)
+matches_to_ignore = ['a7f9a473-4807-4b98-862c-4f098a8eb061']
+matches = [m for m in matches if m not in matches_to_ignore]
+
 
 # In[ ]:
 
