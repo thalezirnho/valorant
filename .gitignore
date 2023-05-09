@@ -4,6 +4,8 @@
 
 #*.ipynb
 *.ipynb_checkpoints
+.ipynb_checkpoints
+*.ipynb  
 
 # Other Extensions
 *.json
@@ -15,3 +17,4 @@
 *.pdf
 *.pyc
 *.exe
+*.txt
