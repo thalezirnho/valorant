@@ -18,6 +18,12 @@ Layer that reads files inside storage, transform them into tables and ingest in 
 
 3. Layer Analytical
 - `analytical.py`
+
 Gold layer that create tables for end users and BI. 
 
 Generate tables by reading `.sql` files inside `sql` folder using DDL commands
+
+4. Assets
+- `assets.py`
+
+Colect data from assets (eg. maps lat, long) ans ingest in Big Query
